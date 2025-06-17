@@ -489,7 +489,7 @@ class EmulatorHubWindow(QMainWindow):
         stack_layout.addWidget(details_box)
         stack_layout.addWidget(self.details_placeholder_label)
         
-        # Call update_details_panel OUTSIDE of this creation method
+        # This call is moved to _create_library_tab to prevent the crash
         return details_widget_stack
 
     def _create_emulators_tab(self):
@@ -931,6 +931,13 @@ class EmulatorHubWindow(QMainWindow):
         if game_data['platform'] in platform_defaults:
             clear_default_action = manage_menu.addAction(f"Clear Default Emulator for {game_data['platform']}")
             clear_default_action.triggered.connect(lambda: self.clear_platform_default_emulator(game_data['platform']))
+        
+        # Add a separator and the delete action
+        manage_menu.addSeparator()
+        delete_action = manage_menu.addAction(self.style().standardIcon(QStyle.StandardPixmap.SP_TrashIcon), "Delete Files...")
+        delete_action.triggered.connect(lambda: self.delete_game_files(item))
+        delete_action.setEnabled(is_enabled)
+
         context_menu.addSeparator()
         show_folder_action = context_menu.addAction(self.style().standardIcon(QStyle.StandardPixmap.SP_DirIcon), "Show in Folder")
         show_folder_action.triggered.connect(lambda: self.show_game_in_explorer(item))
@@ -976,6 +983,36 @@ class EmulatorHubWindow(QMainWindow):
                 subprocess.Popen(['xdg-open', os.path.dirname(path)])
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Could not open file location: {e}")
+
+    # --- DELETE GAME: New method to handle file deletion ---
+    def delete_game_files(self, item):
+        game_data = item.data(Qt.ItemDataRole.UserRole)
+        path_to_delete = Path(game_data['path'])
+        
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("Confirm Deletion")
+        msg_box.setText(f"<h2>Permanently Delete Files?</h2>"
+                        f"<p>This action cannot be undone. It will delete the following file or folder from your hard drive:</p>"
+                        f"<p><b>{path_to_delete.resolve()}</b></p>")
+        msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        msg_box.setDefaultButton(QMessageBox.StandardButton.No)
+        msg_box.setIcon(QMessageBox.Icon.Warning)
+
+        if msg_box.exec() == QMessageBox.StandardButton.Yes:
+            try:
+                self.statusBar().showMessage(f"Deleting {path_to_delete.name}...")
+                if path_to_delete.is_dir():
+                    shutil.rmtree(path_to_delete)
+                else:
+                    path_to_delete.unlink()
+                
+                self.statusBar().showMessage(f"Successfully deleted {path_to_delete.name}.", 5000)
+                # Refresh the library to remove the entry from the UI
+                self.start_full_scan()
+
+            except Exception as e:
+                QMessageBox.critical(self, "Deletion Error", f"Could not delete files.\n\nError: {e}")
+                self.statusBar().showMessage("Deletion failed.", 5000)
 
     def clear_platform_default_emulator(self, platform_name):
         platform_defaults = self.config_manager.config.get("platform_defaults", {})
