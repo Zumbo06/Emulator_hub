@@ -1,62 +1,69 @@
-EmulatorHub
-EmulatorHub is a sleek and modern graphical frontend for managing and launching your retro game collection. It scans your game libraries, organizes your collection by platform, and provides a beautiful, user-friendly interface to browse and play your favorite titles.
+# EmulatorHub
 
-Features
-Automatic Game Scanning: Point EmulatorHub to your game folders, and it will automatically scan and import your collection.
-Platform Organization: Games are automatically sorted by their original console (e.g., PlayStation 2, Nintendo 64, Dreamcast).
-Multiple Views: Browse your collection in a visually-rich Grid View with box art or a clean and simple List View.
-Playtime Tracking: Automatically logs your playtime for each game.
-Emulator Management:
-Auto-Detection: Automatically detects a wide range of popular emulators for 5th and 6th generation consoles and beyond.
-Manual Configuration: Easily add any emulator and configure its launch arguments.
-Per-Game Emulators: Override the default emulator for specific games that need special handling.
-Customization:
-Custom Artwork: Set your own custom cover art for any game via a simple right-click or drag-and-drop.
-Light & Dark Themes: Switch between modern light and dark themes to suit your preference.
-User-Friendly Interface:
-On-Demand Details: A clean details panel shows game information when you need it.
-Favorites & Recents: Quickly access your favorite or recently played games.
-Powerful Context Menus: Right-click a game to play, add to favorites, manage files, or delete it from your drive (with confirmation).
-Getting Started
-Prerequisites
-Python 3.8 or newer.
-pip (Python's package installer).
-Installation
-Clone the repository:
-Generated bash
-git clone https://github.com/Zumbo06/Emulator_hub
-cd EmulatorHub
-Use code with caution.
-Bash
-Install the required packages:
-A requirements.txt file is included to make installation easy. Run the following command in your terminal:
-Generated bash
-pip install -r requirements.txt
-Use code with caution.
-Bash
-Run the application:
-Generated bash
+EmulatorHub is a modern, cross-platform graphical frontend for managing and launching your video game emulator collection. It scans your game libraries, organizes your titles by platform, and provides a clean, user-friendly interface to browse and play your games.
+
+## Features
+
+*   **Unified Game Library:** All your games from different platforms in one beautiful, browsable interface.
+*   **Emulator Management:** Add, configure, and manage all your emulators from a single tab.
+*   **Smart Auto-Detection:** Automatically detects popular emulators for 5th and 6th generation consoles (and beyond), including Dolphin, PCSX2, Xenia, Redream, Project64, and more.
+*   **Rich User Interface:**
+    *   Choose between a modern Grid View with box art or a detailed List View.
+    *   Customizable icon sizes to fit your preference.
+    *   Light and Dark themes.
+    *   On-demand details panel shows game info at a glance.
+*   **Game Information:**
+    *   Tracks and displays playtime for each game.
+    *   Displays file size and platform information.
+    *   Favorites and Recently Played categories for quick access.
+*   **Per-Game Customization:**
+    *   Set custom cover art for any game via file browser or drag-and-drop.
+    *   Override the default emulator for a specific game that requires a different one.
+*   **Efficient & Fast:**
+    *   Library scanning runs in the background, keeping the UI fully responsive.
+    *   Game library data is cached for near-instantaneous application startup.
+*   **Powerful Management Tools:**
+    *   Right-click to show a game in your file explorer.
+    *   Right-click to permanently delete game files from your drive (with confirmation).
+
+## Installation
+
+### 1. Prerequisites
+*   Python 3.8 or newer.
+*   Your own game files and emulators. This application is a launcher and does not provide any games or emulators.
+
+### 2. Setup
+1.  Clone this repository or download the source code as a ZIP file.
+    ```bash
+    git clone https://github.com/Zumbo06/Emulator_hub
+    cd EmulatorHub
+    ```
+2.  Install the required Python packages using the `requirements.txt` file. It's recommended to do this in a virtual environment.
+    ```bash
+    # Create and activate a virtual environment (optional but recommended)
+    python -m venv venv
+    source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
+
+    # Install dependencies
+    pip install -r requirements.txt
+    ```
+
+## How to Run
+
+Once the dependencies are installed, you can run the application with the following command:
+
+```bash
 python emulator_hub_app.py
-Use code with caution.
-Bash
-How to Use
-Add Your Game Folders: On first launch, or by clicking the "Manage Game Folders" icon in the toolbar, add the folders where you store your game ROMs.
-Add Your Emulators:
-Go to the Emulators tab.
-Click "Scan Folder for Emulators..." to have the app automatically find and configure them.
-Alternatively, click "Add..." to manually select an emulator's executable. The app will attempt to auto-detect its settings.
-Browse and Play: Navigate your library on the Library tab and double-click any game to launch it with the configured emulator!
-Supported Emulators (Auto-Detection)
-EmulatorHub can auto-detect the following emulators:
-Nintendo 64: Project64, simple64
-Nintendo GameCube / Wii: Dolphin
-Nintendo Switch: Ryujinx, Sudachi
-PlayStation: DuckStation, Mednafen
-PlayStation 2: PCSX2
-PlayStation 3: RPCS3
-PSP: (Add PPSSPP if desired)
-Sega Dreamcast: Redream, Flycast
-Sega Saturn: Mednafen, YabaSanshiro, Kronos
-Xbox: Xemu
-Xbox 360: Xenia
-...and more can be added manually!
+```
+
+## First-Time Setup
+
+1.  **Add Game Folders:** On first launch, your library will be empty. Click the "folder" icon in the top-left toolbar or go to `File > Manage Game Folders...` to add the directories where you store your game files. The app will automatically scan them.
+2.  **Add Emulators:**
+    *   Go to the **Emulators** tab.
+    *   Click the **"Scan Folder for Emulators..."** button and select the directory where you keep your emulator executables. The app will attempt to auto-detect and configure them.
+    *   Alternatively, click the **"Add..."** button to manually configure an emulator by pointing to its executable.
+3.  **Play!** Go back to the Library tab, select a game, and double-click to play.
+
+
+_This project is created for educational and personal use. Please support game developers and publishers by purchasing games legally._
