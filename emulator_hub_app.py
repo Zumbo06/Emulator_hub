@@ -190,8 +190,6 @@ class EmulatorHubBackend:
             
             # Other Previously Added Emulators
             "RPCS3": {"executables": ["rpcs3"], "systems": ["PlayStation 3"]}, 
-            "Ryujinx": {"executables": ["ryujinx"], "systems": ["Nintendo Switch"]}, 
-            "Sudachi": {"executables": ["sudachi"], "systems": ["Nintendo Switch"]}, 
             "Xenia": {"executables": ["xenia"], "systems": ["Xbox 360"]}
         }
 
