@@ -172,7 +172,28 @@ class EmulatorHubBackend:
         self.cache_path = self.config_manager.covers_dir.parent / "game_cache.json"
         self.PLATFORM_FOLDER_MAP = {"gamecube": "GameCube", "gc": "GameCube", "wii": "Wii", "playstation 2": "PlayStation 2", "ps2": "PlayStation 2", "playstation 3": "PlayStation 3", "ps3": "PlayStation 3", "nintendo switch": "Nintendo Switch", "switch": "Nintendo Switch", "playstation": "PlayStation", "psx": "PlayStation", "ps1": "PlayStation", "psp": "PSP", "playstation portable": "PSP", "xbox": "Xbox", "xbox 360": "Xbox 360", "x360": "Xbox 360", "nintendo 3ds": "Nintendo 3DS", "3ds": "Nintendo 3DS", "nintendo ds": "Nintendo DS", "ds": "Nintendo DS", "dreamcast": "Dreamcast", "dc": "Dreamcast"}
         self.GAME_EXTENSIONS = {".iso": "Xbox", ".xiso.iso": "Xbox", ".gcz": "GameCube", ".rvz": "GameCube", ".wbfs": "Wii", ".xci": "Nintendo Switch", ".nsp": "Nintendo Switch", ".chd": "PlayStation", ".cue": "PlayStation", ".bin": "PlayStation", ".cso": "PSP", ".3ds": "Nintendo 3DS", ".cci": "Nintendo 3DS", ".nds": "Nintendo DS", ".gdi": "Dreamcast", ".cdi": "Dreamcast"}
-        self.KNOWN_EMULATORS = {"Dolphin": {"executables": ["dolphin.exe", "dolphin-emu"], "systems": ["GameCube", "Wii"], "verification_arg": "--version", "identifier": "Dolphin"}, "PCSX2": {"executables": ["pcsx2.exe", "pcsx2-qt.exe"], "systems": ["PlayStation 2"], "verification_arg": "--version", "identifier": "PCSX2"}, "RPCS3": {"executables": ["rpcs3.exe"], "systems": ["PlayStation 3"], "verification_arg": "--version", "identifier": "RPCS3"}, "Ryujinx": {"executables": ["ryujinx.exe"], "systems": ["Nintendo Switch"], "verification_arg": "--version", "identifier": "Ryujinx"}, "Sudachi": {"executables": ["sudachi.exe"], "systems": ["Nintendo Switch"], "verification_arg": "--version", "identifier": "sudachi"}, "DuckStation": {"executables": ["duckstation-qt-x64-releaseltcg.exe", "duckstation-nogui-x64-releaseltcg.exe"], "systems": ["PlayStation"], "verification_arg": "--version", "identifier": "DuckStation"}, "Xemu": {"executables": ["xemu.exe"], "systems": ["Xbox"], "verification_arg": "--version", "identifier": "xemu"}}
+        self.KNOWN_EMULATORS = {
+            # 6th Generation
+            "Dolphin": {"executables": ["dolphin"], "systems": ["GameCube", "Wii"]}, 
+            "PCSX2": {"executables": ["pcsx2", "pcsx2-qt"], "systems": ["PlayStation 2"]}, 
+            "Xemu": {"executables": ["xemu"], "systems": ["Xbox"]},
+            "Redream": {"executables": ["redream"], "systems": ["Dreamcast"]},
+            "Flycast": {"executables": ["flycast"], "systems": ["Dreamcast"]},
+            
+            # 5th Generation
+            "DuckStation": {"executables": ["duckstation-qt", "duckstation-nogui"], "systems": ["PlayStation"]}, 
+            "Project64": {"executables": ["project64"], "systems": ["Nintendo 64"]},
+            "simple64": {"executables": ["simple64-gui", "simple64-cli"], "systems": ["Nintendo 64"]},
+            "Mednafen": {"executables": ["mednafen"], "systems": ["PlayStation", "Sega Saturn"]},
+            "YabaSanshiro": {"executables": ["yabasanshiro"], "systems": ["Sega Saturn"]},
+            "Kronos": {"executables": ["kronos"], "systems": ["Sega Saturn"]},
+            
+            # Other Previously Added Emulators
+            "RPCS3": {"executables": ["rpcs3"], "systems": ["PlayStation 3"]}, 
+            "Ryujinx": {"executables": ["ryujinx"], "systems": ["Nintendo Switch"]}, 
+            "Sudachi": {"executables": ["sudachi"], "systems": ["Nintendo Switch"]}, 
+            "Xenia": {"executables": ["xenia"], "systems": ["Xbox 360"]}
+        }
 
     def load_from_cache(self):
         if not self.cache_path.exists():
@@ -266,22 +287,26 @@ class EmulatorHubBackend:
         for name, data in self.config_manager.config["emulators"].items():
             if system.lower() in [s.lower() for s in data.get("systems", [])]: found_emulators.append({"name": name, "config": data})
         return found_emulators
-    def _verify_emulator_identity(self, exe_path, emu_data):
-        verification_arg = emu_data.get("verification_arg"); identifier = emu_data.get("identifier")
-        if not verification_arg or not identifier: return True
-        try:
-            if sys.platform == "win32" and not exe_path.lower().endswith('.exe'): return False
-            process = subprocess.run([exe_path, verification_arg], capture_output=True, text=True, timeout=5, check=True, creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
-            return identifier.lower() in process.stdout.lower() or identifier.lower() in process.stderr.lower()
-        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError, OSError):
-            return False
+
+    # --- FIX: New, simpler, name-only detection logic ---
     def detect_emulator_from_exe(self, exe_path):
-        exe_name = Path(exe_path).name.lower()
-        for emu, data in self.KNOWN_EMULATORS.items():
-            if any(Path(known_exe).stem in exe_name for known_exe in data["executables"]):
-                if self._verify_emulator_identity(exe_path, data):
-                    return {"name": f"[Auto] {emu}", "data": {"path": exe_path, "systems": data["systems"], "args": data.get("default_args", "")}}
+        """Detects an emulator by checking if known names are part of the exe filename."""
+        selected_exe_name = Path(exe_path).name.lower()
+
+        for emu_name, emu_data in self.KNOWN_EMULATORS.items():
+            for known_exe in emu_data["executables"]:
+                # Check if a known name (e.g., "dolphin") is in the filename ("Dolphin-x64.exe")
+                if known_exe in selected_exe_name:
+                    return {
+                        "name": f"[Auto] {emu_name}", 
+                        "data": {
+                            "path": exe_path, 
+                            "systems": emu_data["systems"], 
+                            "args": emu_data.get("default_args", "")
+                        }
+                    }
         return None
+        
     def get_platform_from_path(self, path):
         p = Path(path);
         while p.parent != p:
@@ -426,14 +451,18 @@ class EmulatorHubWindow(QMainWindow):
         right_layout.addLayout(self._create_view_options_bar())
         right_layout.addWidget(self.games_list)
         
+        # ++++++++++++++ THE FIX IS HERE ++++++++++++++
+        # 1. Create the details panel and assign it to the instance variable.
         self.details_panel = self._create_details_panel()
+        # 2. Add the created panel to the layout.
         right_layout.addWidget(self.details_panel)
-        
+        # 3. NOW that self.details_panel exists, we can safely call a method that uses it.
+        self.update_details_panel(None)
+
         self.main_splitter.addWidget(right_panel)
         self.main_splitter.setSizes([250, 1030])
         layout.addWidget(self.main_splitter)
         return library_widget
-
     def _create_view_options_bar(self):
         layout = QHBoxLayout()
         self.btn_list_view = QPushButton(self.create_view_switcher_icon('list'), ""); self.btn_list_view.setCheckable(True)
@@ -489,7 +518,10 @@ class EmulatorHubWindow(QMainWindow):
         stack_layout.addWidget(details_box)
         stack_layout.addWidget(self.details_placeholder_label)
         
-        # This call is moved to _create_library_tab to prevent the crash
+        # ++++++++++++++ THE FIX IS HERE ++++++++++++++
+        # The problematic call is REMOVED from this method.
+        # self.update_details_panel(None) 
+        
         return details_widget_stack
 
     def _create_emulators_tab(self):
@@ -785,21 +817,37 @@ class EmulatorHubWindow(QMainWindow):
         if dialog.exec():
             self.start_full_scan()
 
+    # ++++++++++++++ THE FIX IS HERE (AGAIN) ++++++++++++++
     def add_emulator(self):
-        exe_path, _ = QFileDialog.getOpenFileName(self, "Select Emulator Executable")
-        if not exe_path: return
+        exe_path, _ = QFileDialog.getOpenFileName(self, "Select Emulator Executable", "", "Executables (*.exe);;All Files (*)")
+        if not exe_path:
+            return
+
         detected = self.backend.detect_emulator_from_exe(exe_path)
+        
         if detected:
+            # Successfully auto-detected
             if detected['name'] not in self.config_manager.config["emulators"]:
-                self.config_manager.config["emulators"][detected['name']] = detected['data']; self.config_manager.save_config(); self.update_emulator_list(); QMessageBox.information(self, "Emulator Added", f"Successfully auto-detected and added '{detected['name']}'.")
-            else: QMessageBox.warning(self, "Emulator Exists", f"An emulator named '{detected['name']}' is already configured.")
+                self.config_manager.config["emulators"][detected['name']] = detected['data']
+                self.config_manager.save_config()
+                self.update_emulator_list()
+                QMessageBox.information(self, "Emulator Added", f"Successfully auto-detected and added '{detected['name']}'.")
+            else:
+                QMessageBox.warning(self, "Emulator Exists", f"An emulator named '{detected['name']}' is already configured.")
         else:
+            # Detection failed, fall back to manual entry
             QMessageBox.information(self, "Unknown Emulator", "Could not identify this emulator. Please enter its details manually.")
             dialog = EmulatorEditDialog(emu_data={"path": exe_path}, parent=self)
             if dialog.exec():
                 result = dialog.get_data()
                 if result["name"] and result["data"]["path"]:
-                    self.config_manager.config["emulators"][result["name"]] = result["data"]; self.config_manager.save_config(); self.update_emulator_list()
+                    if result["name"] in self.config_manager.config["emulators"]:
+                        QMessageBox.warning(self, "Emulator Exists", f"An emulator named '{result['name']}' is already configured.")
+                    else:
+                        self.config_manager.config["emulators"][result["name"]] = result["data"]
+                        self.config_manager.save_config()
+                        self.update_emulator_list()
+
     def scan_for_emulators(self):
         scan_path = QFileDialog.getExistingDirectory(self, "Select Folder to Scan for Emulators")
         if not scan_path: return
@@ -932,7 +980,6 @@ class EmulatorHubWindow(QMainWindow):
             clear_default_action = manage_menu.addAction(f"Clear Default Emulator for {game_data['platform']}")
             clear_default_action.triggered.connect(lambda: self.clear_platform_default_emulator(game_data['platform']))
         
-        # Add a separator and the delete action
         manage_menu.addSeparator()
         delete_action = manage_menu.addAction(self.style().standardIcon(QStyle.StandardPixmap.SP_TrashIcon), "Delete Files...")
         delete_action.triggered.connect(lambda: self.delete_game_files(item))
@@ -984,7 +1031,6 @@ class EmulatorHubWindow(QMainWindow):
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Could not open file location: {e}")
 
-    # --- DELETE GAME: New method to handle file deletion ---
     def delete_game_files(self, item):
         game_data = item.data(Qt.ItemDataRole.UserRole)
         path_to_delete = Path(game_data['path'])
@@ -1007,7 +1053,6 @@ class EmulatorHubWindow(QMainWindow):
                     path_to_delete.unlink()
                 
                 self.statusBar().showMessage(f"Successfully deleted {path_to_delete.name}.", 5000)
-                # Refresh the library to remove the entry from the UI
                 self.start_full_scan()
 
             except Exception as e:
