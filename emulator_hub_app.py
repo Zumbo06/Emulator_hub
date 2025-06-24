@@ -171,7 +171,25 @@ class EmulatorHubBackend:
         self.config_manager = config_manager; self.games_by_platform = {}; self.all_games_map = {}
         self.cache_path = self.config_manager.covers_dir.parent / "game_cache.json"
         self.PLATFORM_FOLDER_MAP = {"gamecube": "GameCube", "gc": "GameCube", "wii": "Wii", "playstation 2": "PlayStation 2", "ps2": "PlayStation 2", "playstation 3": "PlayStation 3", "ps3": "PlayStation 3", "nintendo switch": "Nintendo Switch", "switch": "Nintendo Switch", "playstation": "PlayStation", "psx": "PlayStation", "ps1": "PlayStation", "psp": "PSP", "playstation portable": "PSP", "xbox": "Xbox", "xbox 360": "Xbox 360", "x360": "Xbox 360", "nintendo 3ds": "Nintendo 3DS", "3ds": "Nintendo 3DS", "nintendo ds": "Nintendo DS", "ds": "Nintendo DS", "dreamcast": "Dreamcast", "dc": "Dreamcast"}
-        self.GAME_EXTENSIONS = {".iso": "Xbox", ".xiso.iso": "Xbox", ".gcz": "GameCube", ".rvz": "GameCube", ".wbfs": "Wii", ".xci": "Nintendo Switch", ".nsp": "Nintendo Switch", ".chd": "PlayStation", ".cue": "PlayStation", ".bin": "PlayStation", ".cso": "PSP", ".3ds": "Nintendo 3DS", ".cci": "Nintendo 3DS", ".nds": "Nintendo DS", ".gdi": "Dreamcast", ".cdi": "Dreamcast"}
+        self.GAME_EXTENSIONS = {
+            ".iso": "Xbox", 
+            ".xiso.iso": "Xbox", 
+            ".gcz": "GameCube", 
+            ".rvz": "GameCube", 
+            ".wbfs": "Wii", 
+            ".xci": "Nintendo Switch", 
+            ".nsp": "Nintendo Switch", 
+            ".chd": "PlayStation", 
+            ".cue": "PlayStation", 
+            ".bin": "PlayStation", 
+            ".cso": "PSP", 
+            ".3ds": "Nintendo 3DS", 
+            ".cci": "Nintendo 3DS", 
+            ".nds": "Nintendo DS", 
+            ".gdi": "Dreamcast", 
+            ".cdi": "Dreamcast",
+            ".z64": "Nintendo 64"
+        }
         self.KNOWN_EMULATORS = {
             # 6th Generation
             "Dolphin": {"executables": ["dolphin"], "systems": ["GameCube", "Wii"]}, 
