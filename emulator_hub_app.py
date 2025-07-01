@@ -95,6 +95,8 @@ class GameScanner(QThread):
         self.scan_finished.emit(games_by_platform, all_games_map)
 
     def _add_game(self, platform, title_source, path, games_by_platform, all_games_map):
+        if platform == "Game Boy Color":
+            platform = "Game Boy"
         if platform not in games_by_platform: games_by_platform[platform] = []
         path_hash = hashlib.md5(str(Path(path).resolve()).encode()).hexdigest()
         if path_hash not in all_games_map:
@@ -170,9 +172,10 @@ class EmulatorHubBackend:
     def __init__(self, config_manager: ConfigManager):
         self.config_manager = config_manager; self.games_by_platform = {}; self.all_games_map = {}
         self.cache_path = self.config_manager.covers_dir.parent / "game_cache.json"
-        self.PLATFORM_FOLDER_MAP = {"gamecube": "GameCube", "gc": "GameCube", "wii": "Wii", "playstation 2": "PlayStation 2", "ps2": "PlayStation 2", "playstation 3": "PlayStation 3", "ps3": "PlayStation 3", "nintendo switch": "Nintendo Switch", "switch": "Nintendo Switch", "playstation": "PlayStation", "psx": "PlayStation", "ps1": "PlayStation", "psp": "PSP", "playstation portable": "PSP", "xbox": "Xbox", "xbox 360": "Xbox 360", "x360": "Xbox 360", "nintendo 3ds": "Nintendo 3DS", "3ds": "Nintendo 3DS", "nintendo ds": "Nintendo DS", "ds": "Nintendo DS", "dreamcast": "Dreamcast", "dc": "Dreamcast"}
+        self.PLATFORM_FOLDER_MAP = {"gamecube": "GameCube", "gc": "GameCube", "wii": "Wii", "playstation 2": "PlayStation 2", "ps2": "PlayStation 2", "playstation 3": "PlayStation 3", "ps3": "PlayStation 3", "nintendo switch": "Nintendo Switch", "switch": "Nintendo Switch", "playstation": "PlayStation", "psx": "PlayStation", "ps1": "PlayStation", "psp": "PSP", "playstation portable": "PSP", "xbox": "Xbox", "xbox 360": "Xbox 360", "x360": "Xbox 360", "nintendo 3ds": "Nintendo 3DS", "3ds": "Nintendo 3DS", "nintendo ds": "Nintendo DS", "ds": "Nintendo DS", "dreamcast": "Dreamcast", "dc": "Dreamcast", "super nintendo": "Super Nintendo", "snes": "Super Nintendo", "sega genesis": "Sega Genesis", "genesis": "Sega Genesis", "mega drive": "Sega Genesis", "turbografx-16": "TurboGrafx-16", "pc engine": "TurboGrafx-16", "game boy": "Game Boy", "gb": "Game Boy", "game boy color": "Game Boy Color", "gbc": "Game Boy Color", "game boy advance": "Game Boy Advance", "gba": "Game Boy Advance", "sega game gear": "Sega Game Gear", "gg": "Sega Game Gear", "atari lynx": "Atari Lynx", "lynx": "Atari Lynx"}
         self.GAME_EXTENSIONS = {
-            ".iso": "Xbox", 
+            ".iso": "PlayStation 2", 
+            ".pkg": "PlayStation 3",
             ".xiso.iso": "Xbox", 
             ".gcz": "GameCube", 
             ".rvz": "GameCube", 
@@ -188,9 +191,29 @@ class EmulatorHubBackend:
             ".nds": "Nintendo DS", 
             ".gdi": "Dreamcast", 
             ".cdi": "Dreamcast",
-            ".z64": "Nintendo 64"
+            ".z64": "Nintendo 64",
+            ".sfc": "Super Nintendo",
+            ".smc": "Super Nintendo",
+            ".md": "Sega Genesis",
+            ".smd": "Sega Genesis",
+            ".gen": "Sega Genesis",
+            ".pce": "TurboGrafx-16",
+            ".gb": "Game Boy",
+            ".gbc": "Game Boy Color",
+            ".gba": "Game Boy Advance",
+            ".gg": "Sega Game Gear",
+            ".lnx": "Atari Lynx"
         }
         self.KNOWN_EMULATORS = {
+            # Handhelds
+            "mGBA": {"executables": ["mgba"], "systems": ["Game Boy", "Game Boy Color", "Game Boy Advance"]},
+            "VisualBoyAdvance-M": {"executables": ["visualboyadvance-m", "vbam"], "systems": ["Game Boy", "Game Boy Color", "Game Boy Advance"]},
+            "SameBoy": {"executables": ["sameboy"], "systems": ["Game Boy", "Game Boy Color"]},
+            # 4th Generation
+            "Snes9x": {"executables": ["snes9x"], "systems": ["Super Nintendo"]},
+            "Mesen": {"executables": ["mesen"], "systems": ["Super Nintendo"]},
+            "Kega Fusion": {"executables": ["fusion"], "systems": ["Sega Genesis", "Sega Game Gear"]},
+            "BlastEm": {"executables": ["blastem"], "systems": ["Sega Genesis"]},
             # 6th Generation
             "Dolphin": {"executables": ["dolphin"], "systems": ["GameCube", "Wii"]}, 
             "PCSX2": {"executables": ["pcsx2", "pcsx2-qt"], "systems": ["PlayStation 2"]}, 
@@ -202,12 +225,14 @@ class EmulatorHubBackend:
             "DuckStation": {"executables": ["duckstation-qt", "duckstation-nogui"], "systems": ["PlayStation"]}, 
             "Project64": {"executables": ["project64"], "systems": ["Nintendo 64"]},
             "simple64": {"executables": ["simple64-gui", "simple64-cli"], "systems": ["Nintendo 64"]},
-            "Mednafen": {"executables": ["mednafen"], "systems": ["PlayStation", "Sega Saturn"]},
+            "Mednafen": {"executables": ["mednafen"], "systems": ["PlayStation", "Sega Saturn", "Super Nintendo", "Sega Genesis", "TurboGrafx-16", "Atari Lynx"]},
             "YabaSanshiro": {"executables": ["yabasanshiro"], "systems": ["Sega Saturn"]},
             "Kronos": {"executables": ["kronos"], "systems": ["Sega Saturn"]},
             
             # Other Previously Added Emulators
             "RPCS3": {"executables": ["rpcs3"], "systems": ["PlayStation 3"]}, 
+            "Ryujinx": {"executables": ["ryujinx"], "systems": ["Nintendo Switch"]}, 
+            "Sudachi": {"executables": ["sudachi"], "systems": ["Nintendo Switch"]}, 
             "Xenia": {"executables": ["xenia"], "systems": ["Xbox 360"]}
         }
 
@@ -272,8 +297,14 @@ class EmulatorHubBackend:
             return None, f"Failed to start emulator: {e}"
     def _get_launchable_path(self, game_data):
         if game_data['platform'] == "PlayStation 3":
-            eboot_path = Path(game_data['path']) / 'PS3_GAME' / 'USRDIR' / 'EBOOT.BIN'
-            return str(eboot_path) if eboot_path.exists() else None
+            path_obj = Path(game_data['path'])
+            if path_obj.is_dir():
+                eboot_path = path_obj / 'PS3_GAME' / 'USRDIR' / 'EBOOT.BIN'
+                if eboot_path.exists():
+                    return str(eboot_path)
+                if (path_obj / 'PS3_GAME').exists():
+                    return str(path_obj)
+                return None
         return game_data['path']
     def _build_launch_command(self, emulator_path, args_str, game_path):
         norm_emulator_path = os.path.normpath(emulator_path); norm_game_path = os.path.normpath(game_path)
@@ -902,6 +933,14 @@ class EmulatorHubWindow(QMainWindow):
             del self.config_manager.config["emulators"][name]; self.config_manager.save_config(); self.update_emulator_list()
     def launch_selected_game(self, item):
         game_data = item.data(Qt.ItemDataRole.UserRole)
+
+        if game_data.get('platform') == 'PlayStation 3' and game_data.get('path', '').lower().endswith('.pkg'):
+            QMessageBox.information(self, "Installation Required",
+                                    "This is a PlayStation 3 package file (.pkg).\n\n"
+                                    "It must be installed first using your emulator (e.g., RPCS3's 'File > Install Packages/Raps/Edats' option).\n\n"
+                                    "You cannot launch this file directly from EmulatorHub.")
+            return
+            
         custom_emu_name = self.config_manager.config.get("game_metadata", {}).get(game_data['hash'], {}).get("custom_emulator")
         chosen_emulator_config = None
         system = game_data['platform']
