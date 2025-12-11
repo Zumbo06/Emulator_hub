@@ -23,7 +23,7 @@ from PyQt6.QtWidgets import (
     QFileDialog, QLabel, QDialog, QLineEdit, QDialogButtonBox,
     QSplitter, QTabWidget, QMenu, QStyle, QStyledItemDelegate, QSlider, QComboBox,
     QTreeWidget, QTreeWidgetItem, QHeaderView, QCheckBox, QFormLayout, QGroupBox,
-    QSizePolicy, QProgressBar
+    QSizePolicy, QProgressBar, QProgressDialog, QInputDialog
 )
 from PyQt6.QtGui import QFont, QIcon, QPixmap, QAction, QPainter, QColor, QBrush, QPen, QFontDatabase, QPainterPath, QLinearGradient
 from PyQt6.QtCore import Qt, QSize, QStandardPaths, QRect, QTimer, QByteArray, pyqtSignal, QThread
@@ -50,7 +50,7 @@ class Constants:
         "PC": "💻", "Windows": "💻",
         "PlayStation": "🎮", "PlayStation 2": "🎮", "PlayStation 3": "🎮",
         "Xbox": "🎮", "Xbox 360": "🎮",
-        "Wii": "🎮", "GameCube": "🎮", "Nintendo 64": "🎮",
+        "🎮", "Wii": "🎮", "GameCube": "🎮", "Nintendo 64": "🎮",
         "Game Boy": "👾", "Game Boy Color": "👾", "Game Boy Advance": "👾",
         "Nintendo DS": "📱", "Nintendo 3DS": "📱",
         "PSP": "📱",
@@ -425,8 +425,6 @@ class EmulatorTreeDelegate(QStyledItemDelegate):
             return '🎮'
         elif 'rpcs3' in name_lower:
             return '🎯'
-        elif 'ryujinx' in name_lower or 'sudachi' in name_lower:
-            return '🎮'
         elif 'xenia' in name_lower or 'xemu' in name_lower:
             return '🟢'
         elif 'duckstation' in name_lower:
@@ -446,6 +444,106 @@ class EmulatorTreeDelegate(QStyledItemDelegate):
         else:
             return '🎮'
 
+
+
+# =============================================================================
+# --- CONTROLLER SUPPORT ---
+# =============================================================================
+
+class ControllerHandler(QThread):
+    """Handle controller input for navigation"""
+    button_pressed = pyqtSignal(str)
+    
+    def __init__(self, deadzone=0.2):
+        super().__init__()
+        self.deadzone = deadzone
+        self.running = False
+        self.joystick = None
+        
+    def run(self):
+        """Poll controller in background thread"""
+        try:
+            import pygame
+            pygame.init()
+            pygame.joystick.init()
+            
+            if pygame.joystick.get_count() == 0:
+                return
+            
+            self.joystick = pygame.joystick.Joystick(0)
+            self.joystick.init()
+            self.running = True
+            
+            last_axis = {0: 0, 1: 0}
+            axis_pressed = {0: False, 1: False}
+            
+            while self.running:
+                for event in pygame.event.get():
+                    if event.type == pygame.JOYBUTTONDOWN:
+                        # Map common buttons
+                        button_map = {
+                            0: 'A',  # A/Cross
+                            1: 'B',  # B/Circle
+                            2: 'X',  # X/Square
+                            3: 'Y',  # Y/Triangle
+                            4: 'LB',
+                            5: 'RB',
+                            6: 'Back',
+                            7: 'Start',
+                            8: 'LS',
+                            9: 'RS'
+                        }
+                        if event.button in button_map:
+                            self.button_pressed.emit(button_map[event.button])
+                    
+                    elif event.type == pygame.JOYHATMOTION:
+                        # D-pad
+                        x, y = event.value
+                        if x == -1:
+                            self.button_pressed.emit('Left')
+                        elif x == 1:
+                            self.button_pressed.emit('Right')
+                        if y == 1:
+                            self.button_pressed.emit('Up')
+                        elif y == -1:
+                            self.button_pressed.emit('Down')
+                
+                # Analog stick as D-pad
+                if self.joystick:
+                    # Left stick X axis
+                    x_axis = self.joystick.get_axis(0)
+                    if abs(x_axis) > self.deadzone:
+                        if not axis_pressed[0]:
+                            if x_axis < -self.deadzone:
+                                self.button_pressed.emit('Left')
+                            elif x_axis > self.deadzone:
+                                self.button_pressed.emit('Right')
+                            axis_pressed[0] = True
+                    else:
+                        axis_pressed[0] = False
+                    
+                    # Left stick Y axis
+                    y_axis = self.joystick.get_axis(1)
+                    if abs(y_axis) > self.deadzone:
+                        if not axis_pressed[1]:
+                            if y_axis < -self.deadzone:
+                                self.button_pressed.emit('Up')
+                            elif y_axis > self.deadzone:
+                                self.button_pressed.emit('Down')
+                            axis_pressed[1] = True
+                    else:
+                        axis_pressed[1] = False
+                
+                time.sleep(0.1)  # Poll 10 times per second
+                
+        except ImportError:
+            pass  # pygame not installed
+        except Exception:
+            pass
+    
+    def stop(self):
+        self.running = False
+
 # =============================================================================
 # --- CONFIGURATION MANAGER ---
 # =============================================================================
@@ -453,8 +551,9 @@ class ConfigManager:
     def __init__(self):
         config_dir = Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppLocalDataLocation)) / "EmulatorHub"
         self.covers_dir = config_dir / "covers"; self.cache_dir = self.covers_dir / "cache"
+        self.save_states_dir = config_dir / "save_states"
         config_dir.mkdir(parents=True, exist_ok=True); self.covers_dir.mkdir(exist_ok=True)
-        self.cache_dir.mkdir(exist_ok=True)
+        self.cache_dir.mkdir(exist_ok=True); self.save_states_dir.mkdir(exist_ok=True)
         self.config_path = config_dir / "config.json"
         self.config = {
             "game_library_paths": [], "emulators": {}, "custom_covers": {},
@@ -464,7 +563,10 @@ class ConfigManager:
             "splitter_state": "", "sort_order": "Name", "platform_defaults": {},
             "details_panel_visible": True, "selected_platform_filter": "All Platforms",
             "auto_backup": True, "last_scan_date": "", "total_playtime": 0,
-            "collections": {}, "game_tags": {}, "hotkeys": {}, "performance_mode": "balanced"
+            "collections": {}, "game_tags": {}, "hotkeys": {}, "performance_mode": "balanced",
+            "controller_enabled": True, "controller_deadzone": 0.2,
+            "rawg_api_key": "", "auto_fetch_metadata": False,
+            "save_states_path": ""
         }
         self.load_config()
     def load_config(self):
@@ -1067,6 +1169,136 @@ class CollectionManagerDialog(QDialog):
         ok = dialog.exec() == QDialog.DialogCode.Accepted
         return name_edit.text().strip(), ok
 
+class SaveStateManagerDialog(QDialog):
+    """Dialog for managing game save states"""
+    def __init__(self, game_data, config_manager, parent=None):
+        super().__init__(parent)
+        self.game_data = game_data
+        self.config_manager = config_manager
+        self.setWindowTitle(f"Save States - {game_data['title']}")
+        self.setMinimumSize(600, 400)
+        
+        layout = QVBoxLayout(self)
+        
+        # Info
+        info = QLabel(f"Manage save states for {game_data['title']}")
+        info.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+        layout.addWidget(info)
+        
+        # Save states list
+        self.states_tree = QTreeWidget()
+        self.states_tree.setHeaderLabels(["Save State", "Date", "Size"])
+        self.states_tree.setColumnWidth(0, 300)
+        self.populate_save_states()
+        layout.addWidget(self.states_tree)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        
+        btn_create = QPushButton("Create Save Point")
+        btn_create.clicked.connect(self.create_save_point)
+        
+        btn_load = QPushButton("Load State")
+        btn_load.clicked.connect(self.load_state)
+        
+        btn_delete = QPushButton("Delete")
+        btn_delete.clicked.connect(self.delete_state)
+        
+        btn_open_folder = QPushButton("Open Folder")
+        btn_open_folder.clicked.connect(self.open_saves_folder)
+        
+        button_layout.addWidget(btn_create)
+        button_layout.addWidget(btn_load)
+        button_layout.addWidget(btn_delete)
+        button_layout.addStretch()
+        button_layout.addWidget(btn_open_folder)
+        
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(self.accept)
+        
+        layout.addLayout(button_layout)
+        layout.addWidget(close_btn)
+    
+    def get_save_folder(self):
+        """Get save folder for this game"""
+        game_hash = self.game_data['hash']
+        save_folder = self.config_manager.save_states_dir / game_hash
+        save_folder.mkdir(exist_ok=True)
+        return save_folder
+    
+    def populate_save_states(self):
+        """List all save states"""
+        self.states_tree.clear()
+        save_folder = self.get_save_folder()
+        
+        if save_folder.exists():
+            for save_file in sorted(save_folder.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
+                if save_file.is_file():
+                    mod_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(save_file.stat().st_mtime))
+                    size = format_size(save_file.stat().st_size)
+                    item = QTreeWidgetItem([save_file.name, mod_time, size])
+                    item.setData(0, Qt.ItemDataRole.UserRole, str(save_file))
+                    self.states_tree.addTopLevelItem(item)
+        
+        if self.states_tree.topLevelItemCount() == 0:
+            placeholder = QTreeWidgetItem(["No save states yet", "", ""])
+            placeholder.setFlags(Qt.ItemFlag.NoItemFlags)
+            self.states_tree.addTopLevelItem(placeholder)
+    
+    def create_save_point(self):
+        """Create a new save point"""
+        from PyQt6.QtWidgets import QInputDialog
+        name, ok = QInputDialog.getText(self, "Create Save Point", "Save point name:")
+        if ok and name:
+            save_folder = self.get_save_folder()
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            filename = f"{name}_{timestamp}.save"
+            save_path = save_folder / filename
+            
+            # Create empty save file (in real use, this would copy actual save data)
+            save_path.write_text(json.dumps({
+                "game": self.game_data['title'],
+                "timestamp": time.time(),
+                "note": name
+            }))
+            
+            self.populate_save_states()
+            QMessageBox.information(self, "Save Created", f"Save point '{name}' created.")
+    
+    def load_state(self):
+        """Load selected save state"""
+        current = self.states_tree.currentItem()
+        if not current or not current.data(0, Qt.ItemDataRole.UserRole):
+            return
+        
+        save_path = current.data(0, Qt.ItemDataRole.UserRole)
+        QMessageBox.information(self, "Load State", f"In a real implementation, this would load save state from:\n{save_path}")
+    
+    def delete_state(self):
+        """Delete selected save state"""
+        current = self.states_tree.currentItem()
+        if not current or not current.data(0, Qt.ItemDataRole.UserRole):
+            return
+        
+        save_path = Path(current.data(0, Qt.ItemDataRole.UserRole))
+        reply = QMessageBox.question(self, "Confirm Delete", f"Delete save state '{save_path.name}'?")
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                save_path.unlink()
+                self.populate_save_states()
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to delete save: {e}")
+    
+    def open_saves_folder(self):
+        """Open the saves folder in explorer"""
+        save_folder = self.get_save_folder()
+        if sys.platform == "win32":
+            subprocess.Popen(['explorer', str(save_folder)])
+        elif sys.platform == "darwin":
+            subprocess.Popen(['open', str(save_folder)])
+        else:
+            subprocess.Popen(['xdg-open', str(save_folder)])
+
 class EmulatorEditDialog(QDialog):
     def __init__(self, emu_name="", emu_data=None, parent=None):
         super().__init__(parent); self.setWindowTitle("Add/Edit Emulator")
@@ -1164,6 +1396,16 @@ class EmulatorHubWindow(QMainWindow):
         self.search_debounce_timer.timeout.connect(self.repopulate_games_list)
 
         self.setAcceptDrops(True)
+        
+        # Initialize controller support
+        self.controller_handler = None
+        if self.config_manager.config.get("controller_enabled", True):
+            try:
+                self.controller_handler = ControllerHandler(self.config_manager.config.get("controller_deadzone", 0.2))
+                self.controller_handler.button_pressed.connect(self.handle_controller_input)
+                self.controller_handler.start()
+            except:
+                pass  # Controller support optional
         
         self.setup_ui()
         self.apply_theme()
@@ -1922,6 +2164,47 @@ class EmulatorHubWindow(QMainWindow):
         batch_shortcut.activated.connect(lambda: self.batch_action.toggle())
         
         self.statusBar().showMessage("💡 Tip: Press F5 to refresh, Ctrl+F to search, Ctrl+Tab to toggle view", 5000)
+    
+    def handle_controller_input(self, button):
+        """Handle controller button presses"""
+        if button == 'Up':
+            self.games_list.setFocus()
+            current = self.games_list.currentRow()
+            if current > 0:
+                self.games_list.setCurrentRow(current - 1)
+        elif button == 'Down':
+            self.games_list.setFocus()
+            current = self.games_list.currentRow()
+            if current < self.games_list.count() - 1:
+                self.games_list.setCurrentRow(current + 1)
+        elif button == 'Left':
+            self.systems_list.setFocus()
+            current = self.systems_list.currentRow()
+            if current > 0:
+                self.systems_list.setCurrentRow(current - 1)
+        elif button == 'Right':
+            self.games_list.setFocus()
+        elif button == 'A':  # Launch game
+            if self.games_list.currentItem():
+                self.launch_selected_game(self.games_list.currentItem())
+        elif button == 'B':  # Back/Toggle favorite
+            if self.games_list.currentItem():
+                game_data = self.games_list.currentItem().data(Qt.ItemDataRole.UserRole)
+                if game_data:
+                    self.toggle_favorite(game_data['hash'])
+        elif button == 'X':  # Show info
+            if self.games_list.currentItem():
+                self.show_enhanced_game_info(self.games_list.currentItem())
+        elif button == 'Y':  # Search
+            self.search_bar.setFocus()
+        elif button == 'Start':  # Refresh
+            self.start_full_scan()
+        elif button == 'LB':  # Previous tab
+            current = self.tabs.currentIndex()
+            self.tabs.setCurrentIndex(max(0, current - 1))
+        elif button == 'RB':  # Next tab
+            current = self.tabs.currentIndex()
+            self.tabs.setCurrentIndex(min(self.tabs.count() - 1, current + 1))
 
     def update_details_panel(self, current_item):
         details_box = self.details_panel.findChild(QGroupBox)
@@ -2184,6 +2467,12 @@ class EmulatorHubWindow(QMainWindow):
             for collection_name in sorted(collections.keys()):
                 action = collections_menu.addAction(collection_name)
                 action.triggered.connect(lambda checked, name=collection_name, hash=game_data['hash']: self.add_to_collection(hash, name))
+        
+        context_menu.addSeparator()
+        
+        # Save states
+        save_states_action = context_menu.addAction("💾 Manage Save States")
+        save_states_action.triggered.connect(lambda: self.open_save_state_manager(game_data))
         
         info_action = context_menu.addAction(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogHelpButton), "View Info...")
         info_action.triggered.connect(lambda: self.show_game_info(item))
@@ -2480,6 +2769,11 @@ class EmulatorHubWindow(QMainWindow):
             self.config_manager.save_config()
             self.statusBar().showMessage("Settings saved.", 3000)
     
+    def open_save_state_manager(self, game_data):
+        """Open save state manager for a game"""
+        dialog = SaveStateManagerDialog(game_data, self.config_manager, self)
+        dialog.exec()
+    
     def open_collections_manager(self):
         """Open collections manager dialog"""
         dialog = CollectionManagerDialog(self.config_manager, self)
@@ -2562,12 +2856,20 @@ class EmulatorHubWindow(QMainWindow):
         }
         top_platforms = sorted(platform_stats.items(), key=lambda x: x[1], reverse=True)[:5]
         
-        # Create statistics display
+        # Get theme colors
+        theme_colors = self.themes.get(self.current_theme_name, self.themes["Modern Dark"])
+        cyan_color = theme_colors.get('C_HIGHLIGHT_CYAN', '#2AC3DE')
+        blue_color = theme_colors.get('C_HIGHLIGHT_BLUE', '#7AA2F7')
+        text_color = theme_colors.get('C_TEXT_PRIMARY', '#C0CAF5')
+        
+        # Create statistics display with proper styling
         stats_text = f"""
-<h2 style='color: {self.themes[self.current_theme_name]['C_HIGHLIGHT_CYAN']}'>📊 Library Statistics</h2>
-<hr>
-<h3>Overview</h3>
-<ul>
+<div style='color: {text_color}; padding: 20px;'>
+<h2 style='color: {cyan_color}; margin-bottom: 10px;'>📊 Library Statistics</h2>
+<hr style='border-color: {blue_color}; margin: 15px 0;'>
+
+<h3 style='color: {blue_color}; margin-top: 20px;'>Overview</h3>
+<ul style='line-height: 1.8;'>
 <li><b>Total Games:</b> {total_games}</li>
 <li><b>Total Size:</b> {format_size(total_size)}</li>
 <li><b>Total Playtime:</b> {format_playtime(total_playtime)}</li>
@@ -2575,36 +2877,47 @@ class EmulatorHubWindow(QMainWindow):
 <li><b>Favorites:</b> {favorites_count}</li>
 </ul>
 
-<h3>Top 5 Most Played Games</h3>
-<ol>
+<h3 style='color: {blue_color}; margin-top: 20px;'>Top 5 Most Played Games</h3>
+<ol style='line-height: 1.8;'>
 """
-        for game in most_played:
-            stats_text += f"<li><b>{game['title']}</b> ({game['platform']}) - {format_playtime(game.get('playtime', 0))}</li>\n"
         
-        if not most_played:
-            stats_text += "<li><i>No games played yet</i></li>\n"
+        if most_played:
+            for game in most_played:
+                stats_text += f"<li><b>{game['title']}</b> <span style='color: {theme_colors.get('C_TEXT_SECONDARY', '#9AA5CE')}'>({game['platform']})</span> - {format_playtime(game.get('playtime', 0))}</li>\n"
+        else:
+            stats_text += f"<li><i style='color: {theme_colors.get('C_TEXT_SECONDARY', '#9AA5CE')}'>No games played yet</i></li>\n"
         
-        stats_text += """
+        stats_text += f"""
 </ol>
 
-<h3>Top 5 Platforms by Game Count</h3>
-<ol>
+<h3 style='color: {blue_color}; margin-top: 20px;'>Top 5 Platforms by Game Count</h3>
+<ol style='line-height: 1.8;'>
 """
+        
         for platform, count in top_platforms:
             stats_text += f"<li><b>{platform}:</b> {count} game(s)</li>\n"
         
-        stats_text += "</ol>"
+        stats_text += """
+</ol>
+</div>
+"""
         
         # Create a widget to display statistics
         item = QListWidgetItem(self.games_list)
         stats_widget = QLabel(stats_text)
         stats_widget.setWordWrap(True)
         stats_widget.setTextFormat(Qt.TextFormat.RichText)
-        stats_widget.setMargin(20)
-        item.setSizeHint(stats_widget.sizeHint())
+        stats_widget.setStyleSheet(f"QLabel {{ background-color: transparent; padding: 10px; }}")
+        item.setSizeHint(QSize(self.games_list.width() - 50, 600))
+        self.games_list.addItem(item)
         self.games_list.setItemWidget(item, stats_widget)
         
-        self.update_details_panel(None)
+        # Hide details panel for statistics view
+        if hasattr(self, 'details_placeholder_label'):
+            self.details_placeholder_label.setVisible(True)
+        details_box = self.details_panel.findChild(QGroupBox)
+        if details_box:
+            details_box.setVisible(False)
     
     def restore_window_state(self):
         geo_hex = self.config_manager.config.get("window_geometry")
@@ -2619,6 +2932,11 @@ class EmulatorHubWindow(QMainWindow):
         self.details_panel.setVisible(is_visible)
 
     def closeEvent(self, event):
+        # Stop controller handler
+        if self.controller_handler:
+            self.controller_handler.stop()
+            self.controller_handler.wait(1000)
+        
         self.config_manager.config['view_mode'] = 'grid' if self.is_grid_mode else 'list'
         self.config_manager.config['grid_icon_size'] = self.current_grid_icon_size
         self.config_manager.config['list_icon_size'] = self.current_list_icon_size
